@@ -4,6 +4,9 @@ import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from sklearn.feature_extraction import DictVectorizer
+from sklearn.preprocessing import LabelEncoder
+import warnings
+warnings.filterwarnings('ignore')
 
 def analysis_train_data():
     file_path = '../../data/houseprice/train.csv'
@@ -11,6 +14,7 @@ def analysis_train_data():
     print("train data length----->"+str(len(house_data_train)))
     feature_list = house_data_train.columns
     print(feature_list)
+    print(house_data_train)
     # 默认n=5,n表示查看的行数
     print(house_data_train.head(n=5))
     # 对训练数据的房子价格进行分析，计算平均值，标准化值等
@@ -31,40 +35,59 @@ def analysis_train_data():
     print("Skewness: %f" % house_data_train['SalePrice'].skew())
     print("Kurtosis: %f" % house_data_train['SalePrice'].kurt())
     # plt.show()
-    '''
-    分析各个特征对房价关联程度，找出影响房价较大的几个特征，本次打算使用PCA主成分析
-    利用协方差矩阵
-    '''
+    figure = plt.figure()
+    sns.pairplot(x_vars=['OverallQual', 'GrLivArea', 'YearBuilt', 'TotalBsmtSF'], y_vars=['SalePrice'], data=house_data_train)
+    plt.show()
     return house_data_train
 
 
-def feature_handler(data_list):
+def feature_handler(train_data):
     """
-    对每一列的特征进行分析，分别将其放入离散类别特征；连续类标特征和数据类型特征
+    第一步：对数据分析绘制的散点图异常数据的处理
+    第二步：对缺省数据进行处理；处理方式：
+           1.如果整列全部空值，删除整列
+           2.如果部分为空值，采用众数替代
+    第三步：对每一列的特征进行分析，分别将其放入离散类别特征；连续类标特征和数据类型特征
     对于类别特征，将其类别和数量输出到控制台，人工进行判断
     对于数据类型和类别特征中的缺省值和异常值都进行处理
     :param data_list:
     """
-    # 连续类标特征
+    train_data.drop(train_data[(train_data['OverallQual'] < 5) & (train_data['SalePrice'] > 200000)].index,
+                    inplace=True)
+    train_data.drop(train_data[(train_data['GrLivArea'] > 4000) & (train_data['SalePrice'] < 200000)].index,
+                    inplace=True)
+    train_data.drop(train_data[(train_data['YearBuilt'] < 1900) & (train_data['SalePrice'] > 400000)].index,
+                    inplace=True)
+    train_data.drop(train_data[(train_data['TotalBsmtSF'] > 6000) & (train_data['SalePrice'] < 200000)].index,
+                    inplace=True)
+    train_data.reset_index(drop=True, inplace=True)
+    train_data.dropna(axis=1, how='any', inplace=True)
+    # 第一步end
     contain_feature_list = []
     # 离散类别特征
     discrete_feature_list = []
     numeric_feature_list = []
     feature_map = {}
-    for feature in data_list.columns[1:]:
-        if data_list.dtypes[feature] == 'object':
-            # value_counts是pandas自带的统计值函数
-            feature_value_counts = data_list[feature].value_counts()
-            print(feature+'包含的类别个数为 ', len(feature_value_counts))
-            print(feature_value_counts.index)
-            label = input("请输入英文字母c或者d，c表虚连续类别，d表示离散类别：")
-            if label == 'c':
-                contain_feature_list.appdend(feature)
-            elif label == 'd':
-                discrete_feature_list.append(feature)
-            else:
-                break
-        elif data_list.dtypes[feature] != 'object':
+    for feature in train_data.columns[1:]:
+        if train_data.dtypes[feature] == 'object':
+            # 列的众数
+            miss_feature_data = train_data[feature].mode()
+            train_data.fillna(miss_feature_data, inplace=True)
+            # # value_counts是pandas自带的统计值函数
+            # feature_value_counts = train_data[feature].value_counts()
+            # print(feature+'包含的类别个数为 ', len(feature_value_counts))
+            # print(feature_value_counts.index)
+            # label = input("请输入英文字母c或者d，c表虚连续类别，d表示离散类别：")
+            # if label == 'c':
+            #     contain_feature_list.appdend(feature)
+            # elif label == 'd':
+            discrete_feature_list.append(feature)
+            # else:
+            #     break
+        elif train_data.dtypes[feature] != 'object':
+            # 使用列平均值进行填充
+            miss_feature_data = train_data[feature].mean()
+            train_data.fillna(miss_feature_data)
             numeric_feature_list.append(feature)
     feature_map['contain_feature'] = contain_feature_list
     feature_map['discrete_feature'] = discrete_feature_list
@@ -79,19 +102,23 @@ def feature_select(feature_map, data_list):
     :param feature_map:特征类型集合
     """
     standard = StandardScaler()
-    vec = DictVectorizer()
+    vec = LabelEncoder()
     for feature in feature_map['contain_feature']:
-        data_list_format = vec.fit_transform(data_list[feature].values.reshape(-1, 1))
-        data_list[feature].values = data_list_format
+        a = data_list[feature].values
+        data_list[feature] = vec.fit_transform(data_list[feature].values)
     for feature in feature_map['discrete_feature']:
-        a = data_list[feature].values.reshape(-1, 1)
-        data_list_format = vec.fit_transform(a)
+        a = data_list[feature].values
+        data_list[feature] = vec.fit_transform(data_list[feature].values)
     for feature in feature_map['numeric_feature']:
         # 注意此处reshape的作用：将数据转换为1列
-        data_list_format = standard.fit_transform(data_list[feature].values.reshape(-1, 1))
-    pca = PCA(n_components=10)
-    data_list_pca = pca.fit_transform(data_list)
-    print(data_list_pca)
+        a = data_list[feature].values
+        data_list[feature] = standard.fit_transform(data_list[feature].values.reshape(-1, 1))
+    print("数据预处理完毕")
+    pca = PCA(n_components =10, copy=True)
+    data = data_list.iloc[:, :-1]
+    data_list_pca = pca.fit(data)
+    print(pca.explained_variance_ratio_)
+    print(pca.explained_variance_)
     return data_list_pca
 
 
