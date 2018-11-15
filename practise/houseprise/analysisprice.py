@@ -34,10 +34,21 @@ def analysis_train_data():
     '''
     print("Skewness: %f" % house_data_train['SalePrice'].skew())
     print("Kurtosis: %f" % house_data_train['SalePrice'].kurt())
-    # plt.show()
-    figure = plt.figure()
+    null_count = house_data_train.isnull().sum().sort_values(ascending=False)
+    print(null_count)
+    # 'OverallQual(总体材料和加工质量,装修)', 'GrLivArea(生活区平方英尺,住房面积)', 'YearBuilt(建筑年代)', 'TotalBsmtSF(地下室面积)' 是熟悉房价的人分析出的与房价密切相关的属性
     sns.pairplot(x_vars=['OverallQual', 'GrLivArea', 'YearBuilt', 'TotalBsmtSF'], y_vars=['SalePrice'], data=house_data_train)
+    # 绘制上述变量与价格的箱型图
+    data_OverallQual = pd.concat([house_data_train['SalePrice'], house_data_train["OverallQual"]], axis=1)
+    data_GrLivArea = pd.concat([house_data_train['SalePrice'], house_data_train["GrLivArea"]], axis=1)
+    data_YearBuilt = pd.concat([house_data_train['SalePrice'], house_data_train["YearBuilt"]], axis=1)
+    data_TotalBsmtSF = pd.concat([house_data_train['SalePrice'], house_data_train["TotalBsmtSF"]], axis=1)
+    f, ax = plt.subplots(ncols=2, nrows=2, figsize=(8, 6))
+    ax[0, 0].boxplot(x="OverallQual", y="SalePrice", data=data_OverallQual)
+    # 绘制相关系数矩阵
+    # corr_mat = house_data_train.corr()
     plt.show()
+    # sns.heatmap(corr_mat, vmax=.8, square=True);
     return house_data_train
 
 
