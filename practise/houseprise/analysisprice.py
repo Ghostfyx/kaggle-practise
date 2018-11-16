@@ -7,6 +7,7 @@ from sklearn.feature_extraction import DictVectorizer
 from sklearn.preprocessing import LabelEncoder
 import warnings
 warnings.filterwarnings('ignore')
+import numpy as np
 
 def analysis_train_data():
     file_path = '../../data/houseprice/train.csv'
@@ -21,6 +22,7 @@ def analysis_train_data():
     print(house_data_train["SalePrice"].describe())
     # 利用数据可视化绘制房子价格的直方图，根据直方图分析房价的数据分布
     # 发现房价数据正偏，偏离正太分布，有峰值
+    plt.figure(figsize=(18.5, 10.5))
     sns.distplot(house_data_train['SalePrice'], kde=True, rug=True, hist=True)
     '''曲线的峰度(kurtosis)和偏度(skewness)。
     峰度(kurtosis)描述变量取值分布形态的陡缓程度的统计量。
@@ -37,18 +39,37 @@ def analysis_train_data():
     null_count = house_data_train.isnull().sum().sort_values(ascending=False)
     print(null_count)
     # 'OverallQual(总体材料和加工质量,装修)', 'GrLivArea(生活区平方英尺,住房面积)', 'YearBuilt(建筑年代)', 'TotalBsmtSF(地下室面积)' 是熟悉房价的人分析出的与房价密切相关的属性
+    plt.figure(figsize=(18.5, 10.5))
     sns.pairplot(x_vars=['OverallQual', 'GrLivArea', 'YearBuilt', 'TotalBsmtSF'], y_vars=['SalePrice'], data=house_data_train)
     # 绘制上述变量与价格的箱型图
     data_OverallQual = pd.concat([house_data_train['SalePrice'], house_data_train["OverallQual"]], axis=1)
     data_GrLivArea = pd.concat([house_data_train['SalePrice'], house_data_train["GrLivArea"]], axis=1)
     data_YearBuilt = pd.concat([house_data_train['SalePrice'], house_data_train["YearBuilt"]], axis=1)
     data_TotalBsmtSF = pd.concat([house_data_train['SalePrice'], house_data_train["TotalBsmtSF"]], axis=1)
-    f, ax = plt.subplots(ncols=2, nrows=2, figsize=(8, 6))
-    ax[0, 0].boxplot(x="OverallQual", y="SalePrice", data=data_OverallQual)
+    # figure作用：新建画布
+    plt.figure(figsize=(18.5, 10.5))
+    plt.subplot(2,2,1)
+    sns.boxplot(x="OverallQual", y="SalePrice", data=data_OverallQual)
+    plt.subplot(2, 2, 2)
+    sns.boxplot(x="GrLivArea", y="SalePrice", data=data_GrLivArea)
+    plt.subplot(2, 2, 3)
+    sns.boxplot(x="YearBuilt", y="SalePrice", data=data_YearBuilt)
+    plt.subplot(2, 2, 4)
+    sns.boxplot(x="TotalBsmtSF", y="SalePrice", data=data_TotalBsmtSF)
     # 绘制相关系数矩阵
-    # corr_mat = house_data_train.corr()
+    plt.figure(figsize=(18.5, 10.5))
+    house_corr = house_data_train.corr()
+    sns.heatmap(house_corr, vmax=0.8, square=True);
+    # 绘制相关系数矩阵
+    plt.figure(figsize=(18.5, 10.5))
+    k = 10
+    # nlargest的优点就是能一次看到最大的几行
+    cols = house_corr.nlargest(k, columns='SalePrice')['SalePrice'].index
+    cm = np.corrcoef(house_data_train[cols].values.T)
+    sns.set(font_scale=1.25)
+    sns.heatmap(cm, cbar=True, annot=True, square=True, fmt='.2f', annot_kws={'size': 10},
+                     yticklabels=cols.values, xticklabels=cols.values)
     plt.show()
-    # sns.heatmap(corr_mat, vmax=.8, square=True);
     return house_data_train
 
 
