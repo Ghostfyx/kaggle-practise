@@ -9,9 +9,11 @@ import warnings
 warnings.filterwarnings('ignore')
 import numpy as np
 
+top_feature_list = []
+file_path = '../../data/houseprice/train.csv'
+house_data_train = pd.read_csv(file_path)
+
 def analysis_train_data():
-    file_path = '../../data/houseprice/train.csv'
-    house_data_train = pd.read_csv(file_path)
     print("train data length----->"+str(len(house_data_train)))
     feature_list = house_data_train.columns
     print(feature_list)
@@ -36,75 +38,84 @@ def analysis_train_data():
     '''
     print("Skewness: %f" % house_data_train['SalePrice'].skew())
     print("Kurtosis: %f" % house_data_train['SalePrice'].kurt())
-    null_count = house_data_train.isnull().sum().sort_values(ascending=False)
-    print(null_count)
-    # 'OverallQual(总体材料和加工质量,装修)', 'GrLivArea(生活区平方英尺,住房面积)', 'YearBuilt(建筑年代)', 'TotalBsmtSF(地下室面积)' 是熟悉房价的人分析出的与房价密切相关的属性
-    plt.figure(figsize=(18.5, 10.5))
-    sns.pairplot(x_vars=['OverallQual', 'GrLivArea', 'YearBuilt', 'TotalBsmtSF'], y_vars=['SalePrice'], data=house_data_train)
-    # 绘制上述变量与价格的箱型图
-    data_OverallQual = pd.concat([house_data_train['SalePrice'], house_data_train["OverallQual"]], axis=1)
-    data_GrLivArea = pd.concat([house_data_train['SalePrice'], house_data_train["GrLivArea"]], axis=1)
-    data_YearBuilt = pd.concat([house_data_train['SalePrice'], house_data_train["YearBuilt"]], axis=1)
-    data_TotalBsmtSF = pd.concat([house_data_train['SalePrice'], house_data_train["TotalBsmtSF"]], axis=1)
-    # figure作用：新建画布
-    plt.figure(figsize=(18.5, 10.5))
-    plt.subplot(2,2,1)
-    sns.boxplot(x="OverallQual", y="SalePrice", data=data_OverallQual)
-    plt.subplot(2, 2, 2)
-    sns.boxplot(x="GrLivArea", y="SalePrice", data=data_GrLivArea)
-    plt.subplot(2, 2, 3)
-    sns.boxplot(x="YearBuilt", y="SalePrice", data=data_YearBuilt)
-    plt.subplot(2, 2, 4)
-    sns.boxplot(x="TotalBsmtSF", y="SalePrice", data=data_TotalBsmtSF)
     # 绘制相关系数矩阵
     plt.figure(figsize=(18.5, 10.5))
     house_corr = house_data_train.corr()
-    sns.heatmap(house_corr, vmax=0.8, square=True);
+    # 得到与SalePrice相关性top10的特征属性
+    corr_feature_sort = house_corr['SalePrice'].sort_values(ascending=False)
+    top_feature_list = list(corr_feature_sort[(corr_feature_sort.values > 0.5) & (corr_feature_sort.values < 1)].index)
+    # 'OverallQual,装修与房子质量', 'GrLivArea,住房面积', 'GarageCars,车库的车容量', 'GarageArea,车库大小', 'TotalBsmtSF,地下室面积',
+    # '1stFlrSF,一楼面积', 'FullBath，全身的浴室数量', 'TotRmsAbvGrd,房间总数（不含浴室）', 'YearBuilt,建筑年代', 'YearRemodAdd,重构日期'
+    print(top_feature_list)
+    # vmin, vmax : 显示的数据值的最大和最小的范围
+    sns.heatmap(house_corr, vmax=1, square=True)
     # 绘制相关系数矩阵
     plt.figure(figsize=(18.5, 10.5))
-    k = 10
+    k = len(top_feature_list)
     # nlargest的优点就是能一次看到最大的几行
     cols = house_corr.nlargest(k, columns='SalePrice')['SalePrice'].index
     cm = np.corrcoef(house_data_train[cols].values.T)
     sns.set(font_scale=1.25)
     sns.heatmap(cm, cbar=True, annot=True, square=True, fmt='.2f', annot_kws={'size': 10},
-                     yticklabels=cols.values, xticklabels=cols.values)
+                yticklabels=cols.values, xticklabels=cols.values)
+    # 绘制散点图
+    plt.figure(figsize=(18.5, 10.5))
+    # sns.pairplot(x_vars=top_feature_list, y_vars=['SalePrice'], data=house_data_train)
+    # enumerate同时遍历索引和内容
+    for index, feature in enumerate(top_feature_list):
+        plt.subplot(3, 4, index+1)
+        sns.stripplot(x=feature, y="SalePrice", data=house_data_train)
+    # figure作用：新建画布
+    plt.figure(figsize=(18.5, 10.5))
+    # 绘制上述变量与价格的箱型图
+    for index, feature in enumerate(top_feature_list):
+        data = pd.concat([house_data_train['SalePrice'], house_data_train[feature]], axis=1)
+        plt.subplot(3, 4, index+1)
+        sns.boxplot(x=feature, y="SalePrice", data=data)
     plt.show()
-    return house_data_train
 
-
-def feature_handler(train_data):
+def feature_handler():
     """
-    第一步：对数据分析绘制的散点图异常数据的处理
-    第二步：对缺省数据进行处理；处理方式：
-           1.如果整列全部空值，删除整列
-           2.如果部分为空值，采用众数替代
+    第一步：对缺省数据进行处理；处理方式：
+        方法一：删除特征
+           1.如果特征值缺省率达到15%以上，则删除整列数据
+           2.对其余缺省的特征列进行分析，删除关联较小的
+        方法二：特征值补全
+    第二步：对数据分析绘制的散点图异常数据的处理
     第三步：对每一列的特征进行分析，分别将其放入离散类别特征；连续类标特征和数据类型特征
     对于类别特征，将其类别和数量输出到控制台，人工进行判断
     对于数据类型和类别特征中的缺省值和异常值都进行处理
     :param data_list:
     """
-    train_data.drop(train_data[(train_data['OverallQual'] < 5) & (train_data['SalePrice'] > 200000)].index,
+    print(house_data_train.shape)
+    na_count = house_data_train.isnull().sum().sort_values(ascending=False)
+    na_rate = na_count / len(house_data_train)
+    na_data = pd.concat([na_count, na_rate], axis=1, keys=['count', 'ratio'])
+    # 方法一：需要删除的特征
+    # df_train = train_data.drop(na_data[na_data['count'] > 1].index, axis=1)
+    # print(df_train.shape)
+    # 方法二
+    house_data_train.drop(house_data_train[(house_data_train['OverallQual'] < 5) & (house_data_train['SalePrice'] > 200000)].index,
                     inplace=True)
-    train_data.drop(train_data[(train_data['GrLivArea'] > 4000) & (train_data['SalePrice'] < 200000)].index,
+    house_data_train.drop(house_data_train[(house_data_train['GrLivArea'] > 4000) & (house_data_train['SalePrice'] < 200000)].index,
                     inplace=True)
-    train_data.drop(train_data[(train_data['YearBuilt'] < 1900) & (train_data['SalePrice'] > 400000)].index,
+    house_data_train.drop(house_data_train[(house_data_train['YearBuilt'] < 1900) & (house_data_train['SalePrice'] > 400000)].index,
                     inplace=True)
-    train_data.drop(train_data[(train_data['TotalBsmtSF'] > 6000) & (train_data['SalePrice'] < 200000)].index,
+    house_data_train.drop(house_data_train[(house_data_train['TotalBsmtSF'] > 6000) & (house_data_train['SalePrice'] < 200000)].index,
                     inplace=True)
-    train_data.reset_index(drop=True, inplace=True)
-    train_data.dropna(axis=1, how='any', inplace=True)
+    house_data_train.reset_index(drop=True, inplace=True)
+    house_data_train.dropna(axis=1, how='any', inplace=True)
     # 第一步end
     contain_feature_list = []
     # 离散类别特征
     discrete_feature_list = []
     numeric_feature_list = []
     feature_map = {}
-    for feature in train_data.columns[1:]:
-        if train_data.dtypes[feature] == 'object':
+    for feature in house_data_train.columns[1:]:
+        if house_data_train.dtypes[feature] == 'object':
             # 列的众数
-            miss_feature_data = train_data[feature].mode()
-            train_data.fillna(miss_feature_data, inplace=True)
+            miss_feature_data = house_data_train[feature].mode()
+            house_data_train.fillna(miss_feature_data, inplace=True)
             # # value_counts是pandas自带的统计值函数
             # feature_value_counts = train_data[feature].value_counts()
             # print(feature+'包含的类别个数为 ', len(feature_value_counts))
@@ -116,10 +127,10 @@ def feature_handler(train_data):
             discrete_feature_list.append(feature)
             # else:
             #     break
-        elif train_data.dtypes[feature] != 'object':
+        elif house_data_train.dtypes[feature] != 'object':
             # 使用列平均值进行填充
-            miss_feature_data = train_data[feature].mean()
-            train_data.fillna(miss_feature_data)
+            miss_feature_data = house_data_train[feature].mean()
+            house_data_train.fillna(miss_feature_data)
             numeric_feature_list.append(feature)
     feature_map['contain_feature'] = contain_feature_list
     feature_map['discrete_feature'] = discrete_feature_list
@@ -156,6 +167,7 @@ def feature_select(feature_map, data_list):
 
 
 if __name__ == '__main__':
-    house_data_train = analysis_train_data()
-    feature_map = feature_handler(house_data_train)
-    feature_select(feature_map=feature_map, data_list=house_data_train)
+    # feature_handler()
+    analysis_train_data()
+    # feature_map = feature_handler(house_data_train)
+    # feature_select(feature_map=feature_map, data_list=house_data_train)
