@@ -77,7 +77,7 @@ LandSlope: Slope of property 地面倾斜程度
        Mod	Moderate Slope	中等倾斜
        Sev	Severe Slope 严重倾斜
 	
-Neighborhood: Physical locations within Ames city limits
+Neighborhood: Physical locations within Ames city limits  在市区内的地理位置
 
        Blmngtn	Bloomington Heights
        Blueste	Bluestem
