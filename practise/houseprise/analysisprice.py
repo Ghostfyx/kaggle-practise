@@ -98,28 +98,49 @@ def feature_handler():
     na_count = house_data_train.isnull().sum().sort_values(ascending=False)
     na_rate = na_count / len(house_data_train)
     na_data = pd.concat([na_count, na_rate], axis=1, keys=['count', 'ratio'])
-    miss_feature_list = list(na_data[na_data['count'] > 0].index)
-    # print(miss_feature_list)
+    full_feature_list = list(na_data[(na_data['ratio'] <= 0.5) & (na_data['ratio'] > 0)].index)
+    drop_feature_list = list(na_data[na_data['ratio'] > 0.5].index)
     # 方法一：需要删除的特征
-    # df_train = train_data.drop(na_data[na_data['count'] > 1].index, axis=1)
-    # print(df_train.shape)
-    # 方法二：特征填充
-    for feature in miss_feature_list:
-        if house_data_train.dtypes[feature] == 'object':
-            house_data_train[feature] = house_data_train[feature].astype('category')
-            house_data_train[feature] = house_data_train[feature].cat.add_categories('MISSING')
-            """
-            对于dataform：0 or 'index', 1 or 'columns'；对于Series不需要
-            not_object_feature = house_data_train.isnull().sum().sort_values(ascending=False)
-            print(not_object_feature[not_object_feature > 3])
-            剩余三个非对像类型的属性：LotFrontage,GarageYrBlt,MasVnrArea(砖石面积)
-            """
-            house_data_train[feature].fillna(value='MISSING', inplace=True)
-        else:
-            mean = int(house_data_train[feature].mean())
-            house_data_train[feature].fillna(value=mean, inplace=True)
+    house_data_train.drop(drop_feature_list, axis=1, inplace=True)
+    print(house_data_train.shape)
+    # 方法二：特征填充，将类别特征变量和数字特征变量区分开来
+    quantity = [feature for feature in full_feature_list if house_data_train.dtypes[feature] != 'object']
+    quality = [feature for feature in full_feature_list if house_data_train.dtypes[feature] == 'object']
+    for feature in quality:
+        house_data_train[feature] = house_data_train[feature].astype('category')
+        house_data_train[feature] = house_data_train[feature].cat.add_categories('MISSING')
+        """
+        对于dataform：0 or 'index', 1 or 'columns'；对于Series不需要
+        not_object_feature = house_data_train.isnull().sum().sort_values(ascending=False)
+        print(not_object_feature[not_object_feature > 3])
+        剩余三个非对像类型的属性：LotFrontage,GarageYrBlt,MasVnrArea(砖石面积)
+        """
+        house_data_train[feature].fillna(value='MISSING', inplace=True)
+    house_data_train[quantity] = house_data_train[quantity].fillna(0.)
     print(house_data_train.isnull().sum().sort_values(ascending=False))
+    return quality
 
+def labeled_feature_encode(quality_feature):
+    """
+    对所有类型变量，依照各个类型变量的不同取值对应的样本集内房价的均值，
+    按照房价均值高低对此变量的当前取值确定其相对数值1,2,3,4等。
+    相当于对类型变量赋值使其成为连续变量。
+    此方法采用了与One-Hot编码不同的方法来处理离散数据，
+    :param quality_feature:
+    """
+    coding = pd.DataFrame()
+    coding['val'] = house_data_train[quality_feature].unique()
+    coding.index = coding.val
+    a = house_data_train[[quality_feature, 'SalePrice']]
+    b = house_data_train[[quality_feature, 'SalePrice']].groupby(quality_feature)
+    c = house_data_train[[quality_feature, 'SalePrice']].groupby(quality_feature).mean()
+    coding['price_mean'] = house_data_train[[quality_feature, 'SalePrice']].groupby(quality_feature).mean()['SalePrice']
+    coding = coding.sort_values('price_mean')
+    # shape[0]表示列
+    coding['order'] = range(1, coding.shape[0] + 1)
+    coding = coding['order'].to_dict()
+    for attr_v, score in coding.items():
+        house_data_train.loc[house_data_train[quality_feature] == attr_v, quality_feature + '_E'] = score
 
 def feature_select(feature_map, data_list):
     """
@@ -152,4 +173,6 @@ def feature_select(feature_map, data_list):
 if __name__ == '__main__':
     # top_feature_list = ananalysis_train_data()
     # data_visualization(top_feature_list)
-    feature_handler()
+    quality = feature_handler()
+    for feature in quality:
+        labeled_feature_encode(feature)
