@@ -395,6 +395,7 @@ Functional: Home functionality (Assume typical unless deductions are warranted) 
        Mod	Moderate Deductions
        Maj1	Major Deductions 1
        Maj2	Major Deductions 2
+       Maj2	Major Deductions 2
        Sev	Severely Damaged  严重损坏
        Sal	Salvage only
 		

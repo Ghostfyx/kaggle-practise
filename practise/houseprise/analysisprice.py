@@ -10,8 +10,10 @@ warnings.filterwarnings('ignore')
 import numpy as np
 
 # 与价格相关性较高的属性
-file_path = '../../data/houseprice/train.csv'
-house_data_train = pd.read_csv(file_path)
+train_file_path = '../../data/houseprice/train.csv'
+test_file_path = '../../data/houseprice/test.csv'
+house_data_train = pd.read_csv(train_file_path)
+house_data_test = pd.read_csv(test_file_path)
 house_corr = house_data_train.corr()
 
 def ananalysis_train_data():
@@ -95,32 +97,64 @@ def feature_handler():
     对于数据类型和类别特征中的缺省值和异常值都进行处理
     """
     print(house_data_train.shape)
-    na_count = house_data_train.isnull().sum().sort_values(ascending=False)
-    na_rate = na_count / len(house_data_train)
-    na_data = pd.concat([na_count, na_rate], axis=1, keys=['count', 'ratio'])
-    full_feature_list = list(na_data[(na_data['ratio'] <= 0.5) & (na_data['ratio'] > 0)].index)
-    drop_feature_list = list(na_data[na_data['ratio'] > 0.5].index)
+    train_na_count = house_data_train.isnull().sum().sort_values(ascending=False)
+    train_na_rate = train_na_count / len(house_data_train)
+    train_na_data = pd.concat([train_na_count, train_na_rate], axis=1, keys=['count', 'ratio'])
+    print(train_na_data.sort_values('count'))
+    full_feature_list = list(train_na_data[(train_na_data['ratio'] <= 0.5) & (train_na_data['ratio'] > 0)].index)
+    drop_feature_list = list(train_na_data[train_na_data['ratio'] > 0.5].index)
+    test_na_count = house_data_test.isnull().sum().sort_values(ascending=False)
+    # print(test_na_count)
     # 方法一：需要删除的特征
+    drop_feature_list.append("Id")
     house_data_train.drop(drop_feature_list, axis=1, inplace=True)
+    house_data_test.drop(drop_feature_list, axis=1, inplace=True)
     print(house_data_train.shape)
-    # 方法二：特征填充，将类别特征变量和数字特征变量区分开来
+    # 方法二：特征填充，将类别特征变量和数字特征变量区分开来，首先针对不同的缺失特征进行填充
     quantity = [feature for feature in full_feature_list if house_data_train.dtypes[feature] != 'object']
     quality = [feature for feature in full_feature_list if house_data_train.dtypes[feature] == 'object']
-    for feature in quality:
-        house_data_train[feature] = house_data_train[feature].astype('category')
-        house_data_train[feature] = house_data_train[feature].cat.add_categories('MISSING')
-        """
-        对于dataform：0 or 'index', 1 or 'columns'；对于Series不需要
-        not_object_feature = house_data_train.isnull().sum().sort_values(ascending=False)
-        print(not_object_feature[not_object_feature > 3])
-        剩余三个非对像类型的属性：LotFrontage,GarageYrBlt,MasVnrArea(砖石面积)
-        """
-        house_data_train[feature].fillna(value='MISSING', inplace=True)
-    house_data_train[quantity] = house_data_train[quantity].fillna(0.)
+    print(quantity)
+    print(quality)
+    # 用所有相同邻居的住宅的距离中位数来填充
+    house_data_train['LotFrontage'] = house_data_train.groupby('Neighborhood')['LotFrontage'].transform(lambda x: x.fillna(x.median()))
+    house_data_test['LotFrontage'] = house_data_test.groupby("Neighborhood")["LotFrontage"].transform(
+        lambda x: x.fillna(x.median()))
+    # Electrical只有一个缺失值所有用众数填充
+    house_data_train['Electrical'] = house_data_train['Electrical'].fillna(value=house_data_train['Electrical'].mode()[0], inplace=True)
+    #对于车库缺省值即为没有车库
+    Garage_feature = ['GarageType', 'GarageFinish', 'GarageQual', 'GarageCond']
+    house_data_train[Garage_feature] = house_data_train[Garage_feature].fillna(value="None", inplace=True)
+    house_data_test[Garage_feature] = house_data_test[Garage_feature].fillna(value="None", inplace=True)
+    # 对于地板类型和面积，对地板类型用众数填充，对地板面积使用对应地面类型面积的中位数填充
+    print(house_data_train['MasVnrType'])
+    print(house_data_train['MasVnrType'].mode())
+    house_data_train['MasVnrType'] = house_data_train['MasVnrType'].fillna(value=house_data_train['MasVnrType'].mode()[0], inplace=True)
+    house_data_train['MasVnrArea'] = house_data_train.groupby('MasVnrType')['MasVnrArea'].transform(lambda x: x.fillna(x.median()))
+    # 对于地下室缺省值即为没有地下室
+    Bsmt_feature = ['BsmtQual', 'BsmtCond', 'BsmtExposure', 'BsmtFinType1', 'BsmtFinType2']
+    house_data_train[Bsmt_feature] = house_data_train[Bsmt_feature].fillna(value="None", inplace=True)
+    house_data_test[Bsmt_feature] = house_data_test[Bsmt_feature].fillna(value="None", inplace=True)
+    # 对于壁炉缺省即为没有壁炉
+    house_data_train['FireplaceQu'] = house_data_train['FireplaceQu'].fillna(value='None', inplace=True)
+    house_data_test['FireplaceQu'] = house_data_test['FireplaceQu'].fillna(value='None', inplace=True)
+    # for feature in quality:
+    #     house_data_train[feature] = house_data_train[feature].astype('category')
+    #     house_data_train[feature] = house_data_train[feature].cat.add_categories('MISSING')
+    #     """
+    #     对于dataform：0 or 'index', 1 or 'columns'；对于Series不需要
+    #     not_object_feature = house_data_train.isnull().sum().sort_values(ascending=False)
+    #     print(not_object_feature[not_object_feature > 3])
+    #     剩余三个非对像类型的属性：LotFrontage,GarageYrBlt,MasVnrArea(砖石面积)
+    #     """
+    #     house_data_train[feature].fillna(value='MISSING', inplace=True)
+    # house_data_train[quantity] = house_data_train[quantity].fillna(0.)
+    test_na_feature = ['MSZoning','Utilities','KitchenQual','Functional','SaleType','Exterior1st', 'Exterior2nd']
+    house_data_test[test_na_feature] = house_data_test[test_na_feature].fillna(value='None', inplace=True)
     print(house_data_train.isnull().sum().sort_values(ascending=False))
+    print(house_data_test.isnull().sum().sort_values(ascending=False))
     return quality
 
-def labeled_feature_encode(quality_feature):
+# def labeled_feature_encode():
     """
     对所有类型变量，依照各个类型变量的不同取值对应的样本集内房价的均值，
     按照房价均值高低对此变量的当前取值确定其相对数值1,2,3,4等。
@@ -128,19 +162,10 @@ def labeled_feature_encode(quality_feature):
     此方法采用了与One-Hot编码不同的方法来处理离散数据，
     :param quality_feature:
     """
-    coding = pd.DataFrame()
-    coding['val'] = house_data_train[quality_feature].unique()
-    coding.index = coding.val
-    a = house_data_train[[quality_feature, 'SalePrice']]
-    b = house_data_train[[quality_feature, 'SalePrice']].groupby(quality_feature)
-    c = house_data_train[[quality_feature, 'SalePrice']].groupby(quality_feature).mean()
-    coding['price_mean'] = house_data_train[[quality_feature, 'SalePrice']].groupby(quality_feature).mean()['SalePrice']
-    coding = coding.sort_values('price_mean')
-    # shape[0]表示列
-    coding['order'] = range(1, coding.shape[0] + 1)
-    coding = coding['order'].to_dict()
-    for attr_v, score in coding.items():
-        house_data_train.loc[house_data_train[quality_feature] == attr_v, quality_feature + '_E'] = score
+    # 将训练数据和测试数据进行拼接，做相同的类型转换和编码处理
+   # house_data = pd.concat((house_data_test, house_data_train))
+   # pass
+
 
 def feature_select(feature_map, data_list):
     """
@@ -174,5 +199,3 @@ if __name__ == '__main__':
     # top_feature_list = ananalysis_train_data()
     # data_visualization(top_feature_list)
     quality = feature_handler()
-    for feature in quality:
-        labeled_feature_encode(feature)
