@@ -268,9 +268,10 @@ house_data = house_data.replace({'Utilities': {'AllPub': 4, 'NoSeWa': 3, 'NoSewr
 house_data["SaleType"] = house_data.SaleType.map({'COD': 1, 'ConLD': 1, 'ConLI': 1, 'ConLw': 1, 'Oth': 1, 'WD': 1,
                                        'CWD': 2, 'Con': 3, 'New': 3})
 # 添加部分特征
-house_data['TotalSF'] = house_data['TotalBsmtSF'] + house_data['1stFlrSF'] + house_data['2ndFlrSF']
-house_data['YearsSinceRemodel'] = house_data['YrSold'].astype(int) - house_data['YearRemodAdd'].astype(int)
-house_data['Total_Home_Quality'] = house_data['OverallQual'] + house_data['OverallCond']
+# house_data['TotalSF'] = house_data['TotalBsmtSF'] + house_data['1stFlrSF'] + house_data['2ndFlrSF']
+# house_data['YearsSinceRemodel'] = house_data['YrSold'].astype(int) - house_data['YearRemodAdd'].astype(int)
+# house_data['Total_Home_Quality'] = house_data['OverallQual'] + house_data['OverallCond']
+house_data.drop(columns = ['SalePrice'], inplace = True)
 house_data2 = house_data.copy()
 lab = LabelEncoder()
 house_data2["YearBuilt"] = lab.fit_transform(house_data2["YearBuilt"])
@@ -303,4 +304,6 @@ print("开始特征降维")
 lasso=Lasso(alpha=0.001)
 lasso.fit(train_scaled,train_target)
 feature_importance = pd.DataFrame({"Feature Importance":lasso.coef_}, index=train.columns).sort_values("Feature Importance",ascending=False)
-print(feature_importance)
+feature_importance[feature_importance["Feature Importance"]!=0].plot(kind="barh",figsize=(15,30))
+plt.xticks(rotation=90)
+plt.show()
