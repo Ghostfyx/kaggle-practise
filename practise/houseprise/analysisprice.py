@@ -1,14 +1,24 @@
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.decomposition import PCA
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor, ExtraTreesRegressor
+from sklearn.kernel_ridge import KernelRidge
+from sklearn.model_selection import cross_val_score, GridSearchCV
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, RobustScaler
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.preprocessing import LabelEncoder
 import warnings
+
+from sklearn.svm import SVR, LinearSVR
+from xgboost import XGBRegressor
+
 warnings.filterwarnings('ignore')
 import numpy as np
-from sklearn.linear_model import Lasso
+from sklearn.linear_model import Lasso, LinearRegression, Ridge, ElasticNet, RidgeCV, LassoCV, ElasticNetCV, \
+    BayesianRidge, SGDRegressor
 from scipy.stats import skew
 
 # pandas一些属性设置
@@ -106,7 +116,7 @@ train_target = np.log(house_data_train['SalePrice'])
 train_size = house_data_train.shape[0]
 house_data = pd.concat([house_data_train, house_data_test], ignore_index=True)
 house_data.drop(['Id'],axis=1, inplace=True)
-print(house_data.columns)
+print(house_data.shape)
 house_data_count = house_data.isnull().sum().sort_values(ascending=False)
 train_data_count = house_data_train.isnull().sum().sort_values(ascending=False)
 house_data_rate = house_data_count / len(house_data)
@@ -127,8 +137,6 @@ print(house_data.shape)
 用所有相同邻居的住宅的距离中位数来填充
 """
 house_data['LotFrontage'] = house_data.groupby('Neighborhood')['LotFrontage'].transform(lambda x: x.fillna(x.median()))
-house_data['LotFrontage'] = house_data.groupby("Neighborhood")["LotFrontage"].transform(
-    lambda x: x.fillna(x.median()))
 # Electrical只有一个缺失值所有用众数填充
 house_data['Electrical'] = house_data['Electrical'].fillna(value=house_data['Electrical'].mode()[0])
 #对于车库缺省值即为没有车库
@@ -267,43 +275,197 @@ house_data = house_data.replace({'Utilities': {'AllPub': 4, 'NoSeWa': 3, 'NoSewr
                         })
 house_data["SaleType"] = house_data.SaleType.map({'COD': 1, 'ConLD': 1, 'ConLI': 1, 'ConLw': 1, 'Oth': 1, 'WD': 1,
                                        'CWD': 2, 'Con': 3, 'New': 3})
+house_data["MSZoning"] = house_data.MSZoning.map({'C (all)':1, 'RH':2, 'RM':2, 'RL':3, 'FV':4})
+house_data["Neighborhood"] = house_data.Neighborhood.map({'MeadowV': 1,
+                                               'IDOTRR': 2, 'BrDale': 2,
+                                               'OldTown': 3, 'Edwards': 3, 'BrkSide': 3,
+                                               'Sawyer': 4, 'Blueste': 4, 'SWISU': 4, 'NAmes': 4,
+                                               'NPkVill': 5, 'Mitchel': 5,
+                                               'SawyerW': 6, 'Gilbert': 6, 'NWAmes': 6,
+                                               'Blmngtn': 7, 'CollgCr': 7, 'ClearCr': 7, 'Crawfor': 7,
+                                               'Veenker': 8, 'Somerst': 8, 'Timber': 8,
+                                               'StoneBr': 9,
+                                               'NoRidge': 10, 'NridgHt': 10})
+house_data["Condition1"] = house_data.Condition1.map({'Artery': 1,
+                                           'Feedr': 2, 'RRAe': 2,
+                                           'Norm': 3, 'RRAn': 3,
+                                           'PosN': 4, 'RRNe': 4,
+                                           'PosA': 5, 'RRNn': 5})
 # 添加部分特征
 # house_data['TotalSF'] = house_data['TotalBsmtSF'] + house_data['1stFlrSF'] + house_data['2ndFlrSF']
 # house_data['YearsSinceRemodel'] = house_data['YrSold'].astype(int) - house_data['YearRemodAdd'].astype(int)
 # house_data['Total_Home_Quality'] = house_data['OverallQual'] + house_data['OverallCond']
 house_data.drop(columns = ['SalePrice'], inplace = True)
 house_data2 = house_data.copy()
-lab = LabelEncoder()
-house_data2["YearBuilt"] = lab.fit_transform(house_data2["YearBuilt"])
-house_data2["YearRemodAdd"] = lab.fit_transform(house_data2["YearRemodAdd"])
-house_data2["GarageYrBlt"] = lab.fit_transform(house_data2["GarageYrBlt"])
-# 计算各个特征的偏移量（偏移量的作用见笔记）
-house_data2_numeric = house_data2.select_dtypes(exclude=["object"])
-skewness = house_data2_numeric.apply(lambda x: skew(x))
-skewness_features = skewness[abs(skewness) >= 1].index
-house_data2[skewness_features] = np.log1p(house_data2[skewness_features])
+"""
+scikit-learn扩展通常要继承BaseEstimator，下面我们创建自己的转换器《Python数据挖掘入门与实战》会有实例
+以后的kaggle练习中我会多使用这样的转换器，
+"""
+class labelencode(BaseEstimator, TransformerMixin):
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        lab = LabelEncoder()
+        X["YearBuilt"] = lab.fit_transform(X["YearBuilt"])
+        X["YearRemodAdd"] = lab.fit_transform(X["YearRemodAdd"])
+        X["GarageYrBlt"] = lab.fit_transform(X["GarageYrBlt"])
+        return X
+
+class skew_dummies(BaseEstimator, TransformerMixin):
+    def __init__(self, skew=0.5):
+        self.skew = skew
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        X_numeric = X.select_dtypes(exclude=["object"])
+        skewness = X_numeric.apply(lambda x: skew(x))
+        skewness_features = skewness[abs(skewness) >= self.skew].index
+        X[skewness_features] = np.log1p(X[skewness_features])
+        X = pd.get_dummies(X)
+        return X
+
+# 我们对一些特征进行组合，得到新的特征
+class add_feature(BaseEstimator, TransformerMixin):
+    def __init__(self, additional=1):
+        self.additional = additional
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        if self.additional == 1:
+            X["TotalHouse"] = X["TotalBsmtSF"] + X["1stFlrSF"] + X["2ndFlrSF"]
+            X["TotalArea"] = X["TotalBsmtSF"] + X["1stFlrSF"] + X["2ndFlrSF"] + X["GarageArea"]
+
+        else:
+            X["TotalHouse"] = X["TotalBsmtSF"] + X["1stFlrSF"] + X["2ndFlrSF"]
+            X["TotalArea"] = X["TotalBsmtSF"] + X["1stFlrSF"] + X["2ndFlrSF"] + X["GarageArea"]
+
+            X["+_TotalHouse_OverallQual"] = X["TotalHouse"] * X["OverallQual"]
+            X["+_GrLivArea_OverallQual"] = X["GrLivArea"] * X["OverallQual"]
+            X["+_MSZoning_TotalHouse"] = X["MSZoning"] * X["TotalHouse"]
+            X["+_MSZoning_OverallQual"] = X["MSZoning"] + X["OverallQual"]
+            X["+_MSZoning_YearBuilt"] = X["MSZoning"] + X["YearBuilt"]
+            X["+_Neighborhood_TotalHouse"] = X["Neighborhood"] * X["TotalHouse"]
+            X["+_Neighborhood_OverallQual"] = X["Neighborhood"] + X["OverallQual"]
+            X["+_Neighborhood_YearBuilt"] = X["Neighborhood"] + X["YearBuilt"]
+            X["+_BsmtFinSF1_OverallQual"] = X["BsmtFinSF1"] * X["OverallQual"]
+            X["-_Functional_TotalHouse"] = X["Functional"] * X["TotalHouse"]
+            X["-_Functional_OverallQual"] = X["Functional"] + X["OverallQual"]
+            X["-_LotArea_OverallQual"] = X["LotArea"] * X["OverallQual"]
+            X["-_TotalHouse_LotArea"] = X["TotalHouse"] + X["LotArea"]
+            X["-_Condition1_TotalHouse"] = X["Condition1"] * X["TotalHouse"]
+            X["-_Condition1_OverallQual"] = X["Condition1"] + X["OverallQual"]
+            X["Bsmt"] = X["BsmtFinSF1"] + X["BsmtFinSF2"] + X["BsmtUnfSF"]
+            X["Rooms"] = X["FullBath"] + X["TotRmsAbvGrd"]
+            X["PorchArea"] = X["OpenPorchSF"] + X["EnclosedPorch"] + X["3SsnPorch"] + X["ScreenPorch"]
+            X["TotalPlace"] = X["TotalBsmtSF"] + X["1stFlrSF"] + X["2ndFlrSF"] + X["GarageArea"] + X["OpenPorchSF"] + X[
+                "EnclosedPorch"] + X["3SsnPorch"] + X["ScreenPorch"]
+            print(X.shape)
+            return X
+pipe = Pipeline([
+    ('labelencode', labelencode()),
+    ('add_feature', add_feature(additional=2)),
+    ('skew_dummies', skew_dummies(skew=1)),
+    ])
+house_data2 = pipe.fit_transform(house_data2)
 # 对离散型没有连续关系的类别特征进行one-hot编码，会根据类别特征的个数增加新的一列
-house_data2 = pd.get_dummies(house_data2)
-print(house_data2.head())
 house_data = house_data2
 del house_data2
+print(house_data.shape)
 # 使用来对数据进行标准化处理，RobustScaler比standard更加准确
 scaler = RobustScaler()
-train = house_data.iloc[:train_size]
-print(train.shape)
-print(train_target.shape)
+train = house_data[:train_size]
 test = house_data[:train_size]
 train_scaled = scaler.fit(train).transform(train)
 test_scaled = scaler.transform(test)
 print("数据预处理完毕")
 print("开始特征降维")
-# pca = PCA(n_components =20, copy=True)
-# data_list_pca = pca.fit(train_scaled)
-# print(pca.explained_variance_ratio_)
-# print(pca.explained_variance_)
-lasso=Lasso(alpha=0.001)
-lasso.fit(train_scaled,train_target)
-feature_importance = pd.DataFrame({"Feature Importance":lasso.coef_}, index=train.columns).sort_values("Feature Importance",ascending=False)
-feature_importance[feature_importance["Feature Importance"]!=0].plot(kind="barh",figsize=(15,30))
-plt.xticks(rotation=90)
-plt.show()
+# print("使用Lasso回归通过特征的参数向0收缩的程度判断特征的重要性")
+# lasso = Lasso(alpha=0.001)
+# lasso.fit(train_scaled,train_target)
+# feature_importance = pd.DataFrame({"Feature Importance" : lasso.coef_}, index=train.columns).sort_values("Feature Importance",ascending=False)
+# feature_importance[feature_importance["Feature Importance"]!=0].plot(kind="barh",figsize=(15,30))
+# plt.xticks(rotation=90)
+# plt.show()
+print("训练集特征维数:%d" %train.shape[1])
+# 使用PCA降维，维数的设置采用交叉验证的方式，二分法交叉验证
+# 100-150得分提升，150-200扥分下降
+step = [50,100,150,200]
+setp_2 = [150,160,170,180,190]
+step_3 = [150,151,152]
+for item in step_3:
+    pca = PCA(n_components=item)
+    score = cross_val_score(pca, train_scaled,train_target, cv=5).mean()
+    print('降维数为：%d的平均值为：%d'%(item, score))
+pca = PCA(n_components=150)
+train_pca = pca.fit_transform(train_scaled)
+test_pca = pca.transform(test_scaled)
+# 对模型选取进行交叉验证，打算选取模型：Lasso回归，rige回归，ElasticNet，LinearRegression，XgBoost
+print("使用交叉验证获取模型参数")
+alphas_step1 = [0.01,0.03,0.09,0.1,0.3,0.9,1]
+alphas_step2 = [1,2,3,4,5,6,7,8]
+alphas_step3 = [75,76,77,78,79,80,81,82,83,84,85]
+alphas_step4 = [0.003,0.004,0.005,0.055,0.06]
+liner_r = LinearRegression()
+# 选取ridge模型的正则化超参数
+ridge_cv1 = RidgeCV(alphas=alphas_step1, cv=5)
+ridge_cv1.fit(train_pca, train_target)
+print("ridge model1 parameter alpha: %.4f"%(ridge_cv1.alpha_))
+ridge_cv2 = RidgeCV(alphas=alphas_step2, cv=5)
+ridge_cv2.fit(train_pca, train_target)
+print("ridge model2 parameter alpha: %.4f"%(ridge_cv2.alpha_))
+ridge_cv = RidgeCV(alphas=alphas_step3, cv=5)
+ridge_cv.fit(train_pca, train_target)
+print("ridge model parameter alpha: %.4f"%(ridge_cv.alpha_))
+lasso_cv = LassoCV(alphas=alphas_step4,max_iter=10000)
+gbr = GradientBoostingRegressor()
+ela_cv = ElasticNetCV(alphas=alphas_step4,max_iter=10000)
+ela_cv.fit(train_pca, train_target)
+print("Elacv model parameter alpha: %.4f"%(ela_cv.alpha_))
+# 默认高斯核函数
+svr = SVR()
+xgb = XGBRegressor()
+names = ["LR", "Ridge", "Lasso","GBR","Ela",'svr',"xgb"]
+models = [liner_r, ridge_cv, lasso_cv, gbr,ela_cv, svr, xgb]
+print(train_pca.shape)
+print(train_target.shape)
+print("降维后：")
+for name, model in zip(names, models):
+    model.fit(train_pca,train_target)
+    # 均方损失函数：neg_mean_squared_error
+    score = cross_val_score(model, train_pca, train_target, cv=5, scoring="neg_mean_squared_error")
+    print("{}: {:.4f}, {:.4f}".format(name, score.mean(), score.std()))
+print("降维前：")
+for name, model in zip(names, models):
+    score = cross_val_score(model, train_scaled, train_target, cv=5, scoring="neg_mean_squared_error")
+    print("{}: {:.4f}, {:.4f}".format(name, score.mean(), score.std()))
+def rmse_cv(model,X,y):
+    rmse = np.sqrt(-cross_val_score(model, X, y, scoring="neg_mean_squared_error", cv=5))
+    return rmse
+print("别人的模型降维后：")
+models = [LinearRegression(),Ridge(),Lasso(alpha=0.01,max_iter=10000),RandomForestRegressor(),GradientBoostingRegressor(),SVR(),LinearSVR(),
+          ElasticNet(alpha=0.001,max_iter=10000),SGDRegressor(max_iter=1000,tol=1e-3),BayesianRidge(),KernelRidge(alpha=0.6, kernel='polynomial', degree=2, coef0=2.5),
+          ExtraTreesRegressor(),XGBRegressor()]
+names = ["LR", "Ridge", "Lasso", "RF", "GBR", "SVR", "LinSVR", "Ela","SGD","Bay","Ker","Extra","Xgb"]
+for name, model in zip(names, models):
+    score = rmse_cv(model, train_pca, train_target)
+    print("{}: {:.6f}, {:.4f}".format(name,score.mean(),score.std()))
+print("使用网络搜索选取模型假设的超参数:")
+class grid():
+    def __init__(self, model):
+        self.model = model
+
+    def grid_get(self, X, y, param_grid):
+        grid_search = GridSearchCV(self.model, param_grid, cv=5, scoring="neg_mean_squared_error")
+        grid_search.fit(X, y)
+        print(grid_search.best_params_, np.sqrt(-grid_search.best_score_))
+        grid_search.cv_results_['mean_test_score'] = np.sqrt(-grid_search.cv_results_['mean_test_score'])
+        print(pd.DataFrame(grid_search.cv_results_)[['params', 'mean_test_score', 'std_test_score']])
+grid(Lasso()).grid_get(train_pca,train_target,{'alpha': [0.0004,0.0005,0.0007,0.0006,0.0009,0.0008],'max_iter':[5000,7500,10000,12500,15000,17500,20000]})
+grid(Ridge()).grid_get(train_pca,train_target,{'alpha':[35,40,45,50,55,60,65,70,80,90]})
+grid(SVR()).grid_get(train_pca,train_target,{'C':[11,12,13,14,15],'kernel':["rbf"],"gamma":[0.0003,0.0004],"epsilon":[0.008,0.009]})
+
