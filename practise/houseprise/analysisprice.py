@@ -32,21 +32,15 @@ test_file_path = '../../data/houseprice/test.csv'
 house_data_train = pd.read_csv(train_file_path)
 house_data_test = pd.read_csv(test_file_path)
 house_corr = house_data_train.corr()
-def ananalysis_train_data():
-    """
-    数据分析
-    :rtype: object
-    """
-    print("train data length----->" + str(len(house_data_train)))
-    feature_list = house_data_train.columns
-    print(feature_list)
-    print(house_data_train)
-    # 默认n=5,n表示查看的行数
-    print(house_data_train.head(n=5))
-    # 对训练数据的房子价格进行分析，计算平均值，标准化值等
-    print(house_data_train["SalePrice"].describe())
-
-
+"""
+数据分析
+:rtype: object
+"""
+print("train data length----->" + str(len(house_data_train)))
+# 默认n=5,n表示查看的行数
+# print(house_data_train.head())
+# 对训练数据的房子价格进行分析，计算平均值，标准化值等
+print(house_data_train["SalePrice"].describe())
 def data_visualization():
     # 利用数据可视化绘制房子价格的直方图，根据直方图分析房价的数据分布
     # 发现房价数据正偏，偏离正太分布，有峰值
@@ -405,7 +399,7 @@ pca = PCA(n_components=150)
 train_pca = pca.fit_transform(train_scaled)
 test_pca = pca.transform(test_scaled)
 # 对模型选取进行交叉验证，打算选取模型：Lasso回归，rige回归，ElasticNet，LinearRegression，XgBoost
-print("使用交叉验证获取模型参数")
+print("使用交叉验证获取模型参数：")
 alphas_step1 = [0.01,0.03,0.09,0.1,0.3,0.9,1]
 alphas_step2 = [1,2,3,4,5,6,7,8]
 alphas_step3 = [75,76,77,78,79,80,81,82,83,84,85]
@@ -449,10 +443,11 @@ def rmse_cv(model,X,y):
 print("别人的模型降维后：")
 models = [LinearRegression(),Ridge(),Lasso(alpha=0.01,max_iter=10000),RandomForestRegressor(),GradientBoostingRegressor(),SVR(),LinearSVR(),
           ElasticNet(alpha=0.001,max_iter=10000),SGDRegressor(max_iter=1000,tol=1e-3),BayesianRidge(),KernelRidge(alpha=0.6, kernel='polynomial', degree=2, coef0=2.5),
-          ExtraTreesRegressor(),XGBRegressor()]
-names = ["LR", "Ridge", "Lasso", "RF", "GBR", "SVR", "LinSVR", "Ela","SGD","Bay","Ker","Extra","Xgb"]
+          ExtraTreesRegressor()]
+names = ["LR", "Ridge", "Lasso", "RF", "GBR", "SVR", "LinSVR", "Ela","SGD","Bay","Ker","Extra"]
+print('使用交叉验证选择参数对模型进行评价：')
 for name, model in zip(names, models):
-    score = rmse_cv(model, train_pca, train_target)
+    score = rmse_cv(model, train_scaled, train_target)
     print("{}: {:.6f}, {:.4f}".format(name,score.mean(),score.std()))
 print("使用网络搜索选取模型假设的超参数:")
 class grid():
@@ -462,10 +457,44 @@ class grid():
     def grid_get(self, X, y, param_grid):
         grid_search = GridSearchCV(self.model, param_grid, cv=5, scoring="neg_mean_squared_error")
         grid_search.fit(X, y)
-        print(grid_search.best_params_, np.sqrt(-grid_search.best_score_))
+        print('best model and parameter:')
+        print(grid_search.best_estimator_,grid_search.best_params_, np.sqrt(-grid_search.best_score_))
         grid_search.cv_results_['mean_test_score'] = np.sqrt(-grid_search.cv_results_['mean_test_score'])
-        print(pd.DataFrame(grid_search.cv_results_)[['params', 'mean_test_score', 'std_test_score']])
-grid(Lasso()).grid_get(train_pca,train_target,{'alpha': [0.0004,0.0005,0.0007,0.0006,0.0009,0.0008],'max_iter':[5000,7500,10000,12500,15000,17500,20000]})
-grid(Ridge()).grid_get(train_pca,train_target,{'alpha':[35,40,45,50,55,60,65,70,80,90]})
-grid(SVR()).grid_get(train_pca,train_target,{'C':[11,12,13,14,15],'kernel':["rbf"],"gamma":[0.0003,0.0004],"epsilon":[0.008,0.009]})
+        result_pd = pd.DataFrame(grid_search.cv_results_)[['params','mean_test_score', 'std_test_score']]
+        print(result_pd)
+print('model Lasso:')
+grid(Lasso()).grid_get(train_scaled,train_target,{'alpha': [0.0004,0.0005,0.0007,0.0006,0.0009,0.0008],'max_iter':[5000,7500,10000,12500,15000,17500,20000]})
+print('model Ridge:')
+grid(Ridge()).grid_get(train_scaled,train_target,{'alpha':[35,40,45,50,55,60,65,70,80,90]})
+print('model SVR:')
+grid(SVR()).grid_get(train_scaled,train_target,{'C':[11,12,13,14,15],'kernel':["rbf"],"gamma":[0.0003,0.0004],"epsilon":[0.008,0.009]})
+print('model KernelRidge:')
+param_grid={'alpha':[0.2,0.3,0.4,0.5], 'kernel':["polynomial"], 'degree':[3],'coef0':[0.8,1,1.2]}
+grid(KernelRidge()).grid_get(train_scaled,train_target,param_grid)
+print('model ElasticNet:')
+grid(ElasticNet()).grid_get(train_scaled,train_target,{'alpha':[0.0005,0.0008,0.004,0.005],'l1_ratio':[0.08,0.1,0.3,0.5,0.7],'max_iter':[5000,7500,10000,12500,15000,17500,20000]})
+print("对已经经过调参的各个模型进行分析比较，选取模型及其参数：")
+lasso = Lasso(alpha=0.0009,max_iter=5000)
+ridge = Ridge(alpha=80)
+svr = SVR(gamma= 0.0004,kernel='rbf',C=14,epsilon=0.008)
+ker = KernelRidge(alpha=0.5 ,kernel='polynomial',degree=3 , coef0=1.2)
+ela = ElasticNet(alpha=0.004,l1_ratio=0.3,max_iter=5000)
+bay = BayesianRidge()
+names = ["LR", "Ridge", "Lasso", "SVR", "Ela","Bay","Ker"]
+models = [LinearRegression(), ridge, lasso, svr, ela, bay, ker]
+print('使用全网搜索选择参数对模型进行评价：')
+for name, model in zip(names, models):
+    score = rmse_cv(model, train_scaled, train_target)
+    print("{}: {:.6f}, {:.4f}".format(name,score.mean(),score.std()))
+"""
+模型构建已经完成了模型对训练数据的拟合和模型超参数的调节，到现在为止进行了：1.数据集分析，重点分析需要预测的特征；2.数据可视化；
+3.数据清洗，包括：异常点的剔除，缺省值的填充，类别变量特征的转换（连续型和离散型），数值类别特征的归一化处理；
+4.分析特征集，关联部分特征；组成新的特征；此时注意新增特征特征都是和原始特征高度相关的，这可能导致较强的多重共线性 (Multicollinearity)
+5.数据集是否需要降维处理；PCA也可以去除特征的共线性！！
+6.模型的选择：从简单模型出发，从模型对训练集的拟合能力和对测试集的泛化能力出发。模型选择的衡量参数：
+7.模型超参数的选择：可以使用交叉验证和全网搜索的方法
+8.模型的组合，即为集成学习方法，
+"""
+print('使用集成学习方法进行最后处理：')
+
 
