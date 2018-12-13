@@ -427,28 +427,21 @@ names = ["LR", "Ridge", "Lasso","GBR","Ela",'svr',"xgb"]
 models = [liner_r, ridge_cv, lasso_cv, gbr,ela_cv, svr, xgb]
 print(train_pca.shape)
 print(train_target.shape)
+def rmse_cv(model,X,y):
+    rmse = np.sqrt(-cross_val_score(model, X, y, scoring="neg_mean_squared_error", cv=5))
+    return rmse
 print("降维后：")
 for name, model in zip(names, models):
     model.fit(train_pca,train_target)
     # 均方损失函数：neg_mean_squared_error
-    score = cross_val_score(model, train_pca, train_target, cv=5, scoring="neg_mean_squared_error")
+    score = rmse_cv(model, train_pca, train_target)
     print("{}: {:.4f}, {:.4f}".format(name, score.mean(), score.std()))
 print("降维前：")
 for name, model in zip(names, models):
-    score = cross_val_score(model, train_scaled, train_target, cv=5, scoring="neg_mean_squared_error")
-    print("{}: {:.4f}, {:.4f}".format(name, score.mean(), score.std()))
-def rmse_cv(model,X,y):
-    rmse = np.sqrt(-cross_val_score(model, X, y, scoring="neg_mean_squared_error", cv=5))
-    return rmse
-print("别人的模型降维后：")
-models = [LinearRegression(),Ridge(),Lasso(alpha=0.01,max_iter=10000),RandomForestRegressor(),GradientBoostingRegressor(),SVR(),LinearSVR(),
-          ElasticNet(alpha=0.001,max_iter=10000),SGDRegressor(max_iter=1000,tol=1e-3),BayesianRidge(),KernelRidge(alpha=0.6, kernel='polynomial', degree=2, coef0=2.5),
-          ExtraTreesRegressor()]
-names = ["LR", "Ridge", "Lasso", "RF", "GBR", "SVR", "LinSVR", "Ela","SGD","Bay","Ker","Extra"]
-print('使用交叉验证选择参数对模型进行评价：')
-for name, model in zip(names, models):
     score = rmse_cv(model, train_scaled, train_target)
     print("{}: {:.6f}, {:.4f}".format(name,score.mean(),score.std()))
+# 总的来说树模型普遍不如线性模型，可能还是因为get_dummies（独热编码one-hot编码）后带来的数据稀疏性，不过这些模型都是没调过参的。
+# 下面对第一步筛选出的模型进行调参
 print("使用网络搜索选取模型假设的超参数:")
 class grid():
     def __init__(self, model):
@@ -482,7 +475,7 @@ ela = ElasticNet(alpha=0.004,l1_ratio=0.3,max_iter=5000)
 bay = BayesianRidge()
 names = ["LR", "Ridge", "Lasso", "SVR", "Ela","Bay","Ker"]
 models = [LinearRegression(), ridge, lasso, svr, ela, bay, ker]
-print('使用全网搜索选择参数对模型进行评价：')
+print('使用全网搜索选择参数后，对模型进行评价：')
 for name, model in zip(names, models):
     score = rmse_cv(model, train_scaled, train_target)
     print("{}: {:.6f}, {:.4f}".format(name,score.mean(),score.std()))
@@ -496,5 +489,20 @@ for name, model in zip(names, models):
 8.模型的组合，即为集成学习方法，
 """
 print('使用集成学习方法进行最后处理：')
-
-
+# 需要对集成模型进行调参，现在直接使用别人的参数，后续会学习xgboost调参
+# print("Boosting方法的xgBoost模型")
+# model_xgb = XGBRegressor(colsample_bytree=0.4603, gamma=0.0468,
+#                              learning_rate=0.05, max_depth=3,
+#                              min_child_weight=1.7817, n_estimators=2200,
+#                              reg_alpha=0.4640, reg_lambda=0.8571,
+#                              subsample=0.5213, silent=1,
+#                               nthread = -1)
+# score = rmse_cv(model_xgb, train_scaled, train_target)
+# print("{}: {:.6f}, {:.4f}".format(name,score.mean(),score.std()))
+print('使用Bagging方法的randomforest回归模型模型：')
+# 首先对randomforestregressor调参，使用网络搜索的方法
+param_grid = {'max_features':[.1,.3,.5,.7,.9,.99],'n_estimators':[100,200,300,400,500,600,700],
+              'oob_score':[True,False]}
+grid(RandomForestRegressor(n_jobs=-1, random_state=50)).grid_get(train_scaled,train_target,param_grid)
+# 使用stacking方法集成不同的学习模型进行学习
+print('stacking方法开始：')
