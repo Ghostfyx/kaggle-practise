@@ -23,8 +23,8 @@ pd.set_option('display.max_columns',500)
 pd.set_option('display.max_rows',1000)
 
 print('read data begin')
-train_file_path = '../../data/Titanic/train.csv'
-test_file_path = '../../data/Titanic/test.csv'
+train_file_path = 'data/Titanic/train.csv'
+test_file_path = 'data/Titanic/test.csv'
 train_data = pd.read_csv(train_file_path)
 test_data = pd.read_csv(test_file_path)
 print(train_data.columns)
@@ -42,7 +42,8 @@ plt.show()
 # 乘客各属性与结果之间的关系
 print("分析性別与生存之间的关系")
 train_data[['Sex','Survived']].groupby(['Sex']).mean().plot.bar()
-print("")
+print("船舱等级和生存的关系")
+train_data[['Pclass','Survived']].groupby(['Pclass']).count()
 plt.show()
 print('begin handle missing data')
 survived_data = train_data['Survived']
