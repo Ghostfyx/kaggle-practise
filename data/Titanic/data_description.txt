@@ -9,3 +9,4 @@ Ticket：乘客船票的编号
 Fare：乘客为船票支付的费用
 Cabin：乘客所在船舱的编号（可能存在 NaN）
 Embarked：乘客上船的港口（C 代表从 Cherbourg 登船，Q 代表从 Queenstown 登船，S 代表从 Southampton 登船）
+泰坦尼克号从英国的南安普顿港(Southampton)出发，途径法国瑟堡(Cherbourg)和爱尔兰昆士敦Queenstown

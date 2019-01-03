@@ -9,12 +9,15 @@
 @version: 1.0
 @describe:
 '''
+import learn as learn
 import pandas as pd
 import numpy as np
 import warnings
 warnings.filterwarnings('ignore')
 import seaborn as sns
 import matplotlib.pyplot as plt
+import wget
+import fuzzywuzzy
 
 # pandas一些属性设置
 pd.set_option('max_colwidth',200)
